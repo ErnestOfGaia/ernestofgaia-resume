@@ -1,10 +1,15 @@
 services:
   eog-library:
     image: ghcr.io/ernestofgaia/ernestofgaia-resume:latest
+    container_name: eog-library
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     env_file:
       - .env.local
     environment:
       - NODE_ENV=production
+    networks:
+      - nginx-proxy
+
+networks:
+  nginx-proxy:
+    external: true
