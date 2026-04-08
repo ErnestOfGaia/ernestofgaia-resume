@@ -2,8 +2,10 @@
 
 import { useState, useCallback } from "react";
 import { resumeData } from "@/lib/resume";
+import LibrarianChatPanel from "./LibrarianChatPanel";
+import QuestionsLog from "./QuestionsLog";
 
-const tabs = ["Historical", "Skills Based", "Passions"] as const;
+const tabs = ["Historical", "Skills Based", "Passions", "Questions"] as const;
 type Tab = (typeof tabs)[number];
 
 const dreamingStates = [
@@ -18,8 +20,211 @@ interface ActiveViewProps {
   onSleep: () => void;
 }
 
+/**
+ * Simple markdown renderer for agent responses
+ * Handles: headers, lists, bold, italic, code blocks
+ */
+function MarkdownContent({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Headers (###)
+    if (line.startsWith("### ")) {
+      elements.push(
+        <h5
+          key={`h5-${i}`}
+          className="headline-sm"
+          style={{ marginTop: "20px", marginBottom: "12px", fontWeight: 600 }}
+        >
+          {line.replace(/^### /, "")}
+        </h5>
+      );
+      i++;
+      continue;
+    }
+
+    // Headers (##)
+    if (line.startsWith("## ")) {
+      elements.push(
+        <h4
+          key={`h4-${i}`}
+          className="headline-sm"
+          style={{ marginTop: "24px", marginBottom: "16px", fontWeight: 600 }}
+        >
+          {line.replace(/^## /, "")}
+        </h4>
+      );
+      i++;
+      continue;
+    }
+
+    // Headers (#)
+    if (line.startsWith("# ")) {
+      elements.push(
+        <h3
+          key={`h3-${i}`}
+          className="display-sm"
+          style={{ marginTop: "24px", marginBottom: "16px" }}
+        >
+          {line.replace(/^# /, "")}
+        </h3>
+      );
+      i++;
+      continue;
+    }
+
+    // Lists (bullet points)
+    if (line.startsWith("- ") || line.startsWith("* ")) {
+      const listItems = [];
+      while (i < lines.length && (lines[i].startsWith("- ") || lines[i].startsWith("* "))) {
+        listItems.push(
+          <li key={`li-${i}`} style={{ marginBottom: "6px" }}>
+            {parseInlineFormatting(lines[i].replace(/^[-*] /, ""))}
+          </li>
+        );
+        i++;
+      }
+      elements.push(
+        <ul
+          key={`ul-${elements.length}`}
+          style={{
+            paddingLeft: "1.75rem",
+            marginBottom: "16px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0",
+            lineHeight: "1.8",
+          }}
+        >
+          {listItems}
+        </ul>
+      );
+      continue;
+    }
+
+    // Code blocks
+    if (line.startsWith("```")) {
+      const codeLines = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing ```
+      elements.push(
+        <pre
+          key={`code-${elements.length}`}
+          style={{
+            backgroundColor: "var(--surface-container-high)",
+            padding: "16px",
+            borderRadius: "6px",
+            overflow: "auto",
+            marginBottom: "16px",
+            fontSize: "0.85rem",
+            lineHeight: "1.5",
+          }}
+        >
+          <code>{codeLines.join("\n")}</code>
+        </pre>
+      );
+      continue;
+    }
+
+    // Empty lines - add spacing
+    if (!line.trim()) {
+      elements.push(<div key={`spacer-${i}`} style={{ height: "12px" }} />);
+      i++;
+      continue;
+    }
+
+    // Regular paragraphs with inline formatting
+    elements.push(
+      <p
+        key={`p-${i}`}
+        className="body-md"
+        style={{ marginBottom: "16px", lineHeight: "1.8", color: "var(--on-background)" }}
+      >
+        {parseInlineFormatting(line)}
+      </p>
+    );
+    i++;
+  }
+
+  return <div style={{ display: "flex", flexDirection: "column" }}>{elements}</div>;
+}
+
+/**
+ * Parse inline formatting: **bold**, *italic*, `code`
+ */
+function parseInlineFormatting(text: string) {
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < text.length) {
+    // Bold
+    if (text.substring(i).startsWith("**")) {
+      const endIdx = text.indexOf("**", i + 2);
+      if (endIdx !== -1) {
+        parts.push(
+          <strong key={`bold-${i}`}>{text.substring(i + 2, endIdx)}</strong>
+        );
+        i = endIdx + 2;
+        continue;
+      }
+    }
+
+    // Italic
+    if (text[i] === "*" && i + 1 < text.length && text[i + 1] !== "*") {
+      const endIdx = text.indexOf("*", i + 1);
+      if (endIdx !== -1) {
+        parts.push(
+          <em key={`italic-${i}`}>{text.substring(i + 1, endIdx)}</em>
+        );
+        i = endIdx + 1;
+        continue;
+      }
+    }
+
+    // Inline code
+    if (text[i] === "`") {
+      const endIdx = text.indexOf("`", i + 1);
+      if (endIdx !== -1) {
+        parts.push(
+          <code
+            key={`inline-code-${i}`}
+            style={{
+              backgroundColor: "var(--surface-container-high)",
+              padding: "2px 6px",
+              borderRadius: "3px",
+              fontSize: "0.9em",
+            }}
+          >
+            {text.substring(i + 1, endIdx)}
+          </code>
+        );
+        i = endIdx + 1;
+        continue;
+      }
+    }
+
+    // Regular character
+    parts.push(text[i]);
+    i++;
+  }
+
+  return parts;
+}
+
 // Static fallback content rendered from resume data (shown before first agent fetch)
 function StaticContent({ tab }: { tab: Tab }) {
+  if (tab === "Questions") {
+    return <QuestionsLog />;
+  }
+
   if (tab === "Historical") {
     return (
       <>
@@ -88,9 +293,16 @@ export default function ActiveView({ onSleep }: ActiveViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>("Historical");
   const [isLoading, setIsLoading] = useState(false);
   const [agentContent, setAgentContent] = useState<Record<string, string>>({});
+  const [expandedContent, setExpandedContent] = useState<string | null>(null);
   const [dreamState, setDreamState] = useState(dreamingStates[0]);
+  const [isChatOpen, setIsChatOpen] = useState(true); // Open by default when librarian wakes up
 
   const fetchTabContent = useCallback(async (tab: Tab) => {
+    if (tab === "Questions") {
+      setIsLoading(false);
+      return; // Questions tab is managed by QuestionsLog component
+    }
+
     if (agentContent[tab]) return; // already fetched
 
     setIsLoading(true);
@@ -124,6 +336,16 @@ export default function ActiveView({ onSleep }: ActiveViewProps) {
 
   const displayContent = agentContent[activeTab];
 
+  const handleChatTabRequest = (tab: Tab) => {
+    setActiveTab(tab);
+    setExpandedContent(null); // Clear expanded view when switching tabs
+    fetchTabContent(tab);
+  };
+
+  const handleExpandedContent = (content: string) => {
+    setExpandedContent(content);
+  };
+
   return (
     <div className="split-pane-container">
       {/* Left Pane: Librarian (hidden on mobile) */}
@@ -138,6 +360,15 @@ export default function ActiveView({ onSleep }: ActiveViewProps) {
           }}
         />
         <div className="librarian-actions">
+          <a
+            href="https://ernestofgaia.xyz"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary"
+            style={{ width: "100%", marginBottom: "12px" }}
+          >
+            🌍 Travel to ernestofgaia.xyz
+          </a>
           <a
             href="mailto:eog@ernestofgaia.xyz"
             className="btn-primary"
@@ -190,15 +421,27 @@ export default function ActiveView({ onSleep }: ActiveViewProps) {
             </div>
           ) : (
             <>
-              <h2 className="display-sm" style={{ marginBottom: "32px" }}>
-                {activeTab}
-              </h2>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
+                <h2 className="display-sm" style={{ margin: 0 }}>
+                  {expandedContent ? "Expanded Section" : activeTab}
+                </h2>
+                {expandedContent && (
+                  <button
+                    onClick={() => setExpandedContent(null)}
+                    className="btn-secondary"
+                    style={{ padding: "8px 16px", fontSize: "0.875rem" }}
+                  >
+                    ← Back to {activeTab}
+                  </button>
+                )}
+              </div>
               <div className="body-md" style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-                {displayContent ? (
-                  /* Agent-generated markdown content rendered as plain text for now */
-                  <div style={{ whiteSpace: "pre-wrap", lineHeight: "1.7" }}>
-                    {displayContent}
-                  </div>
+                {expandedContent ? (
+                  /* Show expanded section content with markdown formatting */
+                  <MarkdownContent content={expandedContent} />
+                ) : displayContent ? (
+                  /* Agent-generated markdown content rendered with proper formatting */
+                  <MarkdownContent content={displayContent} />
                 ) : (
                   /* Static fallback from resume.ts */
                   <StaticContent tab={activeTab} />
@@ -208,6 +451,27 @@ export default function ActiveView({ onSleep }: ActiveViewProps) {
           )}
         </div>
       </main>
+
+      {/* Librarian Chat Panel */}
+      <LibrarianChatPanel
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        onTabRequest={handleChatTabRequest}
+        onExpandedContent={handleExpandedContent}
+      />
+
+      {/* Floating Chat Button (lower right corner) */}
+      {!isChatOpen && (
+        <button
+          className="floating-chat-btn"
+          onClick={() => setIsChatOpen(true)}
+          aria-label="Open chat with librarian"
+          title="Ask the Librarian"
+        >
+          <span className="chat-icon">💬</span>
+          <span className="chat-label">Ask</span>
+        </button>
+      )}
     </div>
   );
 }
