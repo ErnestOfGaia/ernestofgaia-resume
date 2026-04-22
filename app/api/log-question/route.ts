@@ -68,10 +68,17 @@ export async function POST(request: Request) {
 }
 
 /**
- * GET endpoint to retrieve question logs
- * Can be used to view all logged questions
+ * GET endpoint to retrieve question logs.
+ *
+ * Gated by SHOW_QUESTIONS_LOG env var (server-side, no NEXT_PUBLIC_ prefix).
+ * When unset, returns 404 so the endpoint is invisible on the public site.
+ * Set SHOW_QUESTIONS_LOG=true locally or in a private deploy to enable.
  */
 export async function GET(request: Request) {
+  if (process.env.SHOW_QUESTIONS_LOG !== "true") {
+    return new Response("Not Found", { status: 404 });
+  }
+
   try {
     await ensureLogFile();
 

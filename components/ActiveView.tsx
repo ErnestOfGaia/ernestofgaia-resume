@@ -5,8 +5,15 @@ import { resumeData } from "@/lib/resume";
 import LibrarianChatPanel from "./LibrarianChatPanel";
 import QuestionsLog from "./QuestionsLog";
 
-const tabs = ["Historical", "Skills Based", "Passions", "Questions"] as const;
-type Tab = (typeof tabs)[number];
+const ALL_TABS = ["Historical", "Skills Based", "Passions", "Questions"] as const;
+type Tab = (typeof ALL_TABS)[number];
+
+// Questions tab exposes visitor questions — gate behind an explicit env var so
+// it stays hidden on the public site unless Ernest opts in.
+const SHOW_QUESTIONS_TAB = process.env.NEXT_PUBLIC_SHOW_QUESTIONS_TAB === "true";
+const tabs: readonly Tab[] = SHOW_QUESTIONS_TAB
+  ? ALL_TABS
+  : ALL_TABS.filter((t): t is Tab => t !== "Questions");
 
 const dreamingStates = [
   "Consulting the archives...",
